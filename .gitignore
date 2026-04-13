@@ -8,3 +8,4 @@ __pycache__/
 # Ignore heavy AI weights and video files
 *.pt
 *.mp4
+*.avi
