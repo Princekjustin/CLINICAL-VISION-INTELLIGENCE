@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 18
+names: ['15 degrees', '16 degrees', '17 degrees', '18 degrees', '19 degrees', '20 degrees', '21 degrees', '22 degrees', '23 degrees', '24 degrees', '25 degrees', '26 degrees', '27 degrees', '28 degrees', '29 degrees', '30 degrees', 'Above 30 degrees', 'Below 15 degrees']
+
+roboflow:
+  workspace: dataset-nta0w
+  project: needle-angle-detection-gw4m1
+  version: 2
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/dataset-nta0w/needle-angle-detection-gw4m1/dataset/2

@@ -1,0 +1,10 @@
+# Ignore the environments
+venv/
+gpu_env/
+
+# Ignore Python cache
+__pycache__/
+
+# Ignore heavy AI weights and video files
+*.pt
+*.mp4
