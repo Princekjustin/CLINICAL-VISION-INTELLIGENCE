@@ -26,3 +26,6 @@ runs/
 
 # Ignore only this 303MB zip archive
 Misc ,Additional files/Blood extraction_v2i_yolov8.zip
+
+*.pt 
+secrets.env
