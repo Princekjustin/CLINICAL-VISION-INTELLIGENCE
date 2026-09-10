@@ -1,10 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import SystemStatus from "./SystemStatus";
+import SystemStatus from "./SystemStatus.jsx";
+import { ConsentBanner, SessionTimeout, PrivacyBar, NetworkStatus } from "./healthcare-components";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
+
 
 // ── Icons (must be defined before NAV uses them) ───────────────────────────
 const Icon = ({ d, size=20, color="#8892b0", fill="none", ...p }) => (
@@ -22,9 +24,10 @@ const ActivityIcon = ({size,color}) => <svg width={size} height={size} viewBox="
 const AlertIcon    = ({size,color}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
 const SyringeIconSm= ({size,color}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round"><path d="M18 2l4 4-14 14H4v-4L18 2z"/><line x1="9" y1="11" x2="13" y2="7"/></svg>;
 const CheckIcon    = ({size,color}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>;
+const UsersIcon    = ({size,color}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>;
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const API = "http://localhost:8000";
+const API = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const CATS = [
   { label: "15 degrees",        color: "#00c9b5", alert: "normal"   },
@@ -62,8 +65,10 @@ const NAV = [
   { id: "upload",   icon: UploadIcon,  label: "Upload"     },
   { id: "camera",   icon: CameraIcon,  label: "Live Cam"   },
   { id: "log",      icon: LogIcon,     label: "Audit Log"  },
+  { id: "accounts", icon: UsersIcon,   label: "Accounts"   },
   { id: "settings", icon: SettingsIcon,label: "Settings"   },
 ];
+
 
 function Sidebar({ user, onLogout }) {
   const navigate  = useNavigate();
@@ -77,8 +82,12 @@ function Sidebar({ user, onLogout }) {
         .nav-item:hover { background: rgba(0,201,181,0.12) !important; }
       `}</style>
 
-      {/* Logo */}
-      <div style={s.sidebarLogo}>
+      {/* Logo — clicks to home page */}
+      <div
+        style={{ ...s.sidebarLogo, cursor: "pointer" }}
+        onClick={() => navigate("/")}
+        title="Go to Home Page"
+      >
         <div style={s.logoIcon}>
           <svg viewBox="0 0 32 32" width={22} height={22}>
             <rect x="12" y="4" width="8" height="24" rx="3" fill="white" opacity="0.95"/>
@@ -96,7 +105,7 @@ function Sidebar({ user, onLogout }) {
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: "8px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
-        {NAV.map(({ id, icon: Icon, label }) => {
+        {NAV.filter(item => user?.role === "Admin" || (item.id !== "accounts" && item.id !== "settings")).map(({ id, icon: Icon, label }) => {
           const isActive = active === id || (active === "dashboard" && id === "home");
           return (
             <div
@@ -233,6 +242,7 @@ function ConfBar({ label, confidence, color }) {
 function HomePage({ log }) {
   const totalDetections = log.length;
   const totalAlerts     = log.filter(e => ["critical","warning"].includes(e.alert_level)).length;
+  // eslint-disable-next-line no-unused-vars
   const lastDetection   = log.length ? log[log.length - 1] : null;
 
   return (
@@ -361,7 +371,7 @@ function HomePage({ log }) {
 // ══════════════════════════════════════════════════════════════════════════
 // PAGE: UPLOAD
 // ══════════════════════════════════════════════════════════════════════════
-function UploadPage({ onDetection, threshold }) {
+function UploadPage({ onDetection, threshold, preloadedFile }) {
   const [file, setFile]             = useState(null);
   const [preview, setPreview]       = useState(null);
   const [annotated, setAnnotated]   = useState(null);
@@ -372,11 +382,66 @@ function UploadPage({ onDetection, threshold }) {
   const [dragging, setDragging]     = useState(false);
   const [latency, setLatency]       = useState(null);
   const [flagged, setFlagged]       = useState(false);
+  const [isVideo, setIsVideo]       = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const videoRef  = useRef(null);
+  const canvasRef = useRef(null);
+  const runningRef = useRef(false);
+
+  const captureAndInfer = async () => {
+    if (!videoRef.current || !canvasRef.current || !runningRef.current) return;
+    if (videoRef.current.readyState < 2 || videoRef.current.paused || videoRef.current.ended) {
+      if (videoRef.current.ended) runningRef.current = false;
+      return;
+    }
+    const cv = canvasRef.current;
+    cv.width  = videoRef.current.videoWidth || 1280;
+    cv.height = videoRef.current.videoHeight || 720;
+    const ctx2d = cv.getContext("2d");
+    ctx2d.drawImage(videoRef.current, 0, 0, cv.width, cv.height);
+
+    return new Promise(resolve => {
+      cv.toBlob(async blob => {
+        if (!blob || !runningRef.current) { resolve(); return; }
+        const fd = new FormData();
+        fd.append("file", blob, "frame.jpg");
+        fd.append("confidence_threshold", threshold);
+        const t0 = performance.now();
+        try {
+          const res  = await fetch(`${API}/detect`, { method: "POST", body: fd });
+          if (!res.ok) throw new Error("Server error");
+          const data = await res.json();
+          if (!runningRef.current) { resolve(); return; }
+          setLatency(Math.round(performance.now() - t0));
+          setAnnotated("data:image/jpeg;base64," + data.annotated_image);
+          setDetections(data.detections || []);
+          setHighAlert(data.highest_alert || "none");
+          if (onDetection) data.detections.forEach(d => onDetection(d, "Video Playback"));
+        } catch (_) {}
+        resolve();
+      }, "image/jpeg", 0.90);
+    });
+  };
+
+  const inferenceLoop = async () => {
+    while (runningRef.current) {
+      await captureAndInfer();
+      await new Promise(r => setTimeout(r, 200));
+    }
+    setVideoPlaying(false);
+  };
 
   const handleFile = f => {
     if (!f) return;
+    runningRef.current = false;
+    setVideoPlaying(false);
     setFile(f); setPreview(URL.createObjectURL(f));
-    setAnnotated(null); setDetections([]); setError("");
+    setAnnotated(null); setDetections([]); setError(""); setHighAlert("none");
+    if (f.type.startsWith("video/")) {
+      setIsVideo(true);
+    } else {
+      setIsVideo(false);
+    }
   };
 
   const handleDrop = e => {
@@ -385,44 +450,45 @@ function UploadPage({ onDetection, threshold }) {
     if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) handleFile(f);
   };
 
-  const extractVideoFrame = (videoFile) => new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    video.src = URL.createObjectURL(videoFile);
-    video.currentTime = 1;
-    video.onloadeddata = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-      canvas.getContext("2d").drawImage(video, 0, 0);
-      canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.9);
-    };
-    video.onerror = reject;
-  });
-
   const detect = async () => {
     if (!file) return;
+    if (isVideo) {
+      if (videoRef.current) {
+        runningRef.current = true;
+        setVideoPlaying(true);
+        videoRef.current.play().catch(e => setError("Failed to play video."));
+        inferenceLoop();
+      }
+      return;
+    }
     setLoading(true); setError(""); setFlagged(false);
     const t0 = performance.now();
     try {
-      let imageBlob = file;
-      if (file.type.startsWith("video/")) {
-        imageBlob = await extractVideoFrame(file);
-      }
       const fd = new FormData();
-      fd.append("file", imageBlob, "frame.jpg");
+      fd.append("file", file, "frame.jpg");
       fd.append("confidence_threshold", threshold);
       const res  = await fetch(`${API}/detect`, { method: "POST", body: fd });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      if (!res.ok) throw new Error("Server error " + res.status);
       const data = await res.json();
       const ms = Math.round(performance.now() - t0);
       setLatency(ms);
-      setAnnotated(`data:image/jpeg;base64,${data.annotated_image}`);
+      setAnnotated("data:image/jpeg;base64," + data.annotated_image);
       setDetections(data.detections || []);
       setHighAlert(data.highest_alert || "none");
-      if (onDetection) data.detections.forEach(d => onDetection(d, file.type.startsWith("video/") ? "Video Upload" : "Upload"));
+      if (onDetection) data.detections.forEach(d => onDetection(d, "Image Upload"));
     } catch (e) {
       setError(e.message);
     } finally { setLoading(false); }
   };
+
+  // Load a preloaded file from Live Cam if provided
+  useEffect(() => {
+    if (preloadedFile) handleFile(preloadedFile);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadedFile]);
+
+  // cleanup on unmount
+  useEffect(() => () => { runningRef.current = false; }, []);
 
   return (
     <div style={s.pageWrap}>
@@ -433,13 +499,12 @@ function UploadPage({ onDetection, threshold }) {
         highAlert === "normal"   ? "Needle angle within safe range (15°–30°)" : null
       } />
       <div style={{ marginBottom: 14 }}>
-        <SystemStatus detections={detections} active={!!annotated} />
+        <SystemStatus detections={detections} active={!!annotated || videoPlaying} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         {/* Left — upload */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Drop zone */}
           <div style={s.card}>
             <div style={s.cardHeader}>
               <div style={s.cardTitle}>Select Image or Video</div>
@@ -449,7 +514,7 @@ function UploadPage({ onDetection, threshold }) {
               onDragOver={e => { e.preventDefault(); setDragging(true); }}
               onDragLeave={() => setDragging(false)}
               style={{
-                border: `2px dashed ${dragging ? "#00c9b5" : "#e2e8f0"}`,
+                border: "2px dashed " + (dragging ? "#00c9b5" : "#e2e8f0"),
                 borderRadius: 14, padding: "28px 20px",
                 textAlign: "center", cursor: "pointer",
                 background: dragging ? "rgba(0,201,181,0.05)" : "#fafafa",
@@ -457,7 +522,7 @@ function UploadPage({ onDetection, threshold }) {
               }}
               onClick={() => document.getElementById("file-input").click()}
             >
-              <div style={{ fontSize: 32, marginBottom: 8 }}>{file && file.type.startsWith("video/") ? "🎬" : "🖼️"}</div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>{file && isVideo ? "🎬" : "🖼️"}</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#4a5568", marginBottom: 4 }}>
                 {file ? file.name : "Click or drag & drop an image or video"}
               </div>
@@ -466,20 +531,33 @@ function UploadPage({ onDetection, threshold }) {
                 onChange={e => handleFile(e.target.files[0])} />
             </div>
 
-            {preview && file && file.type.startsWith("video/") ? (
-              <video src={preview} controls style={{ width: "100%", borderRadius: 12, marginTop: 12, maxHeight: 220, background: "#0a0a0a" }} />
+            {preview && isVideo ? (
+              <>
+                <video ref={videoRef} src={preview} controls={true} onPause={() => runningRef.current = false} onPlay={() => { if(!runningRef.current){ runningRef.current=true; setVideoPlaying(true); inferenceLoop(); } }} style={{ width: "100%", borderRadius: 12, marginTop: 12, maxHeight: 250, background: "#0a0a0a" }} />
+                <canvas ref={canvasRef} style={{ display: "none" }} />
+                <div style={{ marginTop: 12, padding: "12px 14px", background: "#f0fdf4", borderRadius: 10, border: "1px solid #6ee7b7" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#047857", fontFamily:"'IBM Plex Mono',monospace" }}>
+                    🎬 VIDEO MODE: Real-time Analysis
+                  </div>
+                  <div style={{ fontSize: 10, color: "#065f46", marginTop: 4 }}>
+                    Play the video to begin real-time injection site detection. Bounding boxes will be drawn over the frames in the Inference Terminal on the right.
+                  </div>
+                </div>
+              </>
             ) : preview ? (
-              <img src={preview} alt="Preview" style={{ width: "100%", borderRadius: 12, marginTop: 12, maxHeight: 220, objectFit: "contain", background: "#f7fafc" }} />
+              <img src={preview} alt="Preview" style={{ width: "100%", borderRadius: 12, marginTop: 12, maxHeight: 250, objectFit: "contain", background: "#f7fafc" }} />
             ) : null}
 
             {error && <div style={{ ...s.errorBox, marginTop: 10 }}>⚠ {error}</div>}
 
-            <button
-              onClick={detect} disabled={!file || loading}
-              style={{ ...s.primaryBtn, marginTop: 14, opacity: (!file || loading) ? 0.6 : 1 }}
-            >
-              {loading ? "⏳ Analysing..." : "🔍 Run Detection"}
-            </button>
+            {!isVideo && (
+              <button
+                onClick={detect} disabled={!file || loading}
+                style={{ ...s.primaryBtn, marginTop: 14, opacity: (!file || loading) ? 0.6 : 1 }}
+              >
+                {loading ? "⏳ Analysing..." : "🔍 Run Detection"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -498,13 +576,13 @@ function UploadPage({ onDetection, threshold }) {
                     <div style={{
                       background: detections.length > 0 ? "#e8f5e9" : "#fff8e1",
                       color: detections.length > 0 ? "#2e7d32" : "#f57f17",
-                      border: `1px solid ${detections.length > 0 ? "#a5d6a7" : "#ffe082"}`,
+                      border: "1px solid " + (detections.length > 0 ? "#a5d6a7" : "#ffe082"),
                       borderRadius: 20, padding: "3px 10px", fontSize: 10, fontWeight: 800,
                       display:"flex", alignItems:"center", gap:4,
                     }}>
                       {detections.length > 0 ? "📍 TARGET ACQUIRED" : "🔍 SCANNING AREA"}
                     </div>
-                    <div style={{ ...s.cardBadge }}>{detections.length} obj</div>
+                    <div style={s.cardBadge}>{detections.length} obj</div>
                   </div>
                 </div>
                 {/* Larger result image */}
@@ -518,7 +596,7 @@ function UploadPage({ onDetection, threshold }) {
                 {/* Metadata readout row */}
                 <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
                   {[
-                    { label:"LATENCY",  val: latency ? `${latency}ms` : "—", color:"#00c9b5" },
+                    { label:"LATENCY",  val: latency ? latency+"ms" : "—", color:"#00c9b5" },
                     { label:"MODEL",    val:"YOLOv11-Medical-v2",              color:"#7c3aed" },
                     { label:"HARDWARE", val:"CUDA Enabled",                    color:"#2e7d32" },
                     { label:"ENGINE",   val:"RTX 5070",                        color:"#f59e0b" },
@@ -539,7 +617,7 @@ function UploadPage({ onDetection, threshold }) {
                   <button
                     onClick={() => {
                       const a = document.createElement("a");
-                      a.href = annotated; a.download = `cvi_detection_${Date.now()}.jpg`; a.click();
+                      a.href = annotated; a.download = "cvi_detection_" + Date.now() + ".jpg"; a.click();
                     }}
                     style={{ flex:1, background:"linear-gradient(135deg,#00c9b5,#006d7e)", color:"#fff",
                       border:"none", borderRadius:10, padding:"9px 14px", fontSize:12, fontWeight:700,
@@ -583,7 +661,7 @@ function UploadPage({ onDetection, threshold }) {
             <div style={{ ...s.card, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:300 }}>
               <div style={{ fontSize:48, marginBottom:16 }}>🎯</div>
               <div style={{ fontFamily:"'Syne',sans-serif", fontSize:14, fontWeight:700, color:"#4a5568", marginBottom:6 }}>Inference Terminal</div>
-              <div style={s.emptyState}>Upload an image or video and run detection to see results here</div>
+              <div style={s.emptyState}>Upload an image or play a video to see real-time results here</div>
             </div>
           )}
         </div>
@@ -591,11 +669,11 @@ function UploadPage({ onDetection, threshold }) {
     </div>
   );
 }
-
 // ══════════════════════════════════════════════════════════════════════════
 // PAGE: CAMERA
 // ══════════════════════════════════════════════════════════════════════════
-function CameraPage({ onDetection, threshold }) {
+function CameraPage({ onDetection, threshold, onSendToUpload }) {
+  const navigate = useNavigate();
   const [active, setActive]       = useState(false);
   const [annotated, setAnnotated] = useState(null);
   const [liveDets, setLiveDets]   = useState([]);
@@ -603,51 +681,90 @@ function CameraPage({ onDetection, threshold }) {
   const [error, setError]         = useState("");
   const [liveLatency, setLiveLatency] = useState(null);
   const [liveFlagged, setLiveFlagged] = useState(false);
+  const [paused, setPaused]   = useState(false);
+  const pausedRef = useRef(false);
   const videoRef   = useRef(null);
   const canvasRef  = useRef(null);
   const intervalRef = useRef(null);
 
+  // Non-overlapping inference loop — waits for each API call to finish before next frame
+  const runningRef = useRef(false);
+
+  const captureAndInfer = async (thresholdVal) => {
+    if (!videoRef.current || !canvasRef.current || !runningRef.current || pausedRef.current) return;
+    if (videoRef.current.readyState < 2) return; // video not ready yet
+    const cv = canvasRef.current;
+    if (!videoRef.current.videoWidth) return;
+    cv.width  = videoRef.current.videoWidth;
+    cv.height = videoRef.current.videoHeight;
+    const ctx2d = cv.getContext("2d");
+    // Flip for correct orientation before sending to API
+    ctx2d.translate(cv.width, 0);
+    ctx2d.scale(-1, 1);
+    ctx2d.drawImage(videoRef.current, 0, 0);
+    ctx2d.setTransform(1, 0, 0, 1, 0, 0);
+
+    return new Promise(resolve => {
+      cv.toBlob(async blob => {
+        if (!blob || !runningRef.current) { resolve(); return; }
+        const fd = new FormData();
+        fd.append("file", blob, "frame.jpg");
+        fd.append("confidence_threshold", thresholdVal);
+        const t0 = performance.now();
+        try {
+          const res  = await fetch(`${API}/detect`, { method: "POST", body: fd });
+          const data = await res.json();
+          if (!runningRef.current) { resolve(); return; }
+          setLiveLatency(Math.round(performance.now() - t0));
+          setAnnotated(`data:image/jpeg;base64,${data.annotated_image}`);
+          setLiveDets(data.detections || []);
+          setLiveAlert(data.highest_alert || "none");
+          if (onDetection) data.detections.forEach(d => onDetection(d, "Live Camera"));
+        } catch (_) {}
+        resolve();
+      }, "image/jpeg", 0.90); // higher quality for better detection accuracy
+    });
+  };
+
+  const inferenceLoop = async (thresholdVal) => {
+    while (runningRef.current) {
+      if (!pausedRef.current) await captureAndInfer(thresholdVal);
+      await new Promise(r => setTimeout(r, pausedRef.current ? 500 : 200));
+    }
+  };
+
   const start = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 15 } }
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      runningRef.current = true;
       setActive(true);
-      intervalRef.current = setInterval(async () => {
-        if (!videoRef.current || !canvasRef.current) return;
-        const cv = canvasRef.current;
-        cv.width = videoRef.current.videoWidth; cv.height = videoRef.current.videoHeight;
-        const ctx2d = cv.getContext("2d");
-        // Flip horizontally to correct mirror effect before sending to API
-        ctx2d.translate(cv.width, 0);
-        ctx2d.scale(-1, 1);
-        ctx2d.drawImage(videoRef.current, 0, 0);
-        ctx2d.setTransform(1, 0, 0, 1, 0, 0);
-        cv.toBlob(async blob => {
-          if (!blob) return;
-          const fd = new FormData(); fd.append("file", blob, "frame.jpg");
-          fd.append("confidence_threshold", threshold);
-          const t0 = performance.now();
-          try {
-            const res = await fetch(`${API}/detect`, { method: "POST", body: fd });
-            const data = await res.json();
-            setLiveLatency(Math.round(performance.now() - t0));
-            setAnnotated(`data:image/jpeg;base64,${data.annotated_image}`);
-            setLiveDets(data.detections || []);
-            setLiveAlert(data.highest_alert || "none");
-            if (onDetection) data.detections.forEach(d => onDetection(d, "Live Camera"));
-          } catch (_) {}
-        }, "image/jpeg", 0.8);
-      }, 800);
+      inferenceLoop(threshold);
     } catch (e) { setError("Camera access denied. Please allow camera permissions."); }
   };
 
   const stop = () => {
+    runningRef.current = false;
+    pausedRef.current  = false;
     clearInterval(intervalRef.current);
     if (videoRef.current?.srcObject) videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-    setActive(false); setLiveDets([]); setAnnotated(null); setLiveAlert("none");
+    setActive(false); setPaused(false); setLiveDets([]); setAnnotated(null); setLiveAlert("none");
   };
 
-  useEffect(() => () => clearInterval(intervalRef.current), []);
+  const togglePause = () => {
+    const next = !pausedRef.current;
+    pausedRef.current = next;
+    setPaused(next);
+    // If resuming, restart the inference loop
+    if (!next) inferenceLoop(threshold);
+  };
+
+  useEffect(() => () => { runningRef.current = false; clearInterval(intervalRef.current); }, []);
 
   return (
     <div style={s.pageWrap}>
@@ -668,10 +785,42 @@ function CameraPage({ onDetection, threshold }) {
               <div style={{ fontFamily:"'Syne',sans-serif", fontSize:14, fontWeight:800, color:"#1a1a2e" }}>Camera Feed</div>
               <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                 {active && (
-                  <div style={{ display:"flex", alignItems:"center", gap:5, background:"#1a0000", border:"1px solid #e53935", borderRadius:6, padding:"3px 8px" }}>
-                    <span style={{ width:7, height:7, borderRadius:"50%", background:"#e53935", display:"inline-block", animation:"recBlink 1.1s ease infinite" }}/>
-                    <span style={{ fontSize:9, color:"#e53935", fontFamily:"'IBM Plex Mono',monospace", fontWeight:700, letterSpacing:"0.1em" }}>REC</span>
-                  </div>
+                  <>
+                    {/* REC badge */}
+                    <div style={{ display:"flex", alignItems:"center", gap:5, background:"#1a0000", border:"1px solid #e53935", borderRadius:6, padding:"3px 8px" }}>
+                      <span style={{ width:7, height:7, borderRadius:"50%", background:"#e53935", display:"inline-block", animation: paused ? "none" : "recBlink 1.1s ease infinite", opacity: paused ? 0.3 : 1 }}/>
+                      <span style={{ fontSize:9, color: paused ? "#718096" : "#e53935", fontFamily:"'IBM Plex Mono',monospace", fontWeight:700, letterSpacing:"0.1em" }}>{paused ? "PAUSED" : "REC"}</span>
+                    </div>
+                    {/* Inference toggle */}
+                    <div
+                      onClick={togglePause}
+                      title={paused ? "Resume inference" : "Pause inference"}
+                      style={{
+                        display:"flex", alignItems:"center", gap:7, cursor:"pointer",
+                        background: paused ? "#f0fdf4" : "#eff6ff",
+                        border: `1px solid ${paused ? "#86efac" : "#bfdbfe"}`,
+                        borderRadius:20, padding:"3px 10px",
+                        transition:"all 0.2s",
+                      }}
+                    >
+                      <div style={{
+                        width:26, height:14, borderRadius:99,
+                        background: paused ? "#d1d5db" : "#00c9b5",
+                        position:"relative", transition:"background 0.2s",
+                      }}>
+                        <div style={{
+                          width:10, height:10, borderRadius:"50%", background:"#fff",
+                          position:"absolute", top:2,
+                          left: paused ? 2 : 14,
+                          transition:"left 0.2s",
+                          boxShadow:"0 1px 3px rgba(0,0,0,0.2)",
+                        }}/>
+                      </div>
+                      <span style={{ fontSize:9, fontWeight:700, color: paused ? "#6b7280" : "#00c9b5", fontFamily:"'IBM Plex Mono',monospace" }}>
+                        {paused ? "OFF" : "ON"}
+                      </span>
+                    </div>
+                  </>
                 )}
                 <div style={{
                   ...s.cardBadge,
@@ -683,7 +832,7 @@ function CameraPage({ onDetection, threshold }) {
               </div>
             </div>
             <div style={{ background: "#0a0a0a", borderRadius: 12, overflow: "hidden", aspectRatio: "16/9", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <video ref={videoRef} style={{ width: "100%", display: "block" }} muted />
+              <video ref={videoRef} style={{ width: "100%", display: "block", transform: "scaleX(-1)" }} muted />
               {!active && <div style={{ position: "absolute", color: "#666", fontSize: 13 }}>Camera inactive</div>}
             </div>
             <canvas ref={canvasRef} style={{ display: "none" }} />
@@ -734,6 +883,20 @@ function CameraPage({ onDetection, threshold }) {
                     onClick={() => { const a = document.createElement("a"); a.href = annotated; a.download = `cvi_live_${Date.now()}.jpg`; a.click(); }}
                     style={{ flex:1, background:"linear-gradient(135deg,#00c9b5,#006d7e)", color:"#fff", border:"none", borderRadius:10, padding:"9px 12px", fontSize:11, fontWeight:700, cursor:"pointer" }}
                   >⬇ Save Frame</button>
+                  <button
+                    onClick={() => {
+                      if (!annotated || !onSendToUpload) return;
+                      // Convert base64 annotated image → File object
+                      fetch(annotated)
+                        .then(r => r.blob())
+                        .then(blob => {
+                          const f = new File([blob], `live_frame_${Date.now()}.jpg`, { type: "image/jpeg" });
+                          onSendToUpload(f);
+                          navigate("../upload");
+                        });
+                    }}
+                    style={{ flex:1, background:"#eff6ff", color:"#1d4ed8", border:"1.5px solid #bfdbfe", borderRadius:10, padding:"9px 12px", fontSize:11, fontWeight:700, cursor:"pointer" }}
+                  >↗ Send to Upload</button>
                   <button
                     onClick={() => setLiveFlagged(f => !f)}
                     style={{ flex:1, background: liveFlagged ? "#fde8e8":"#f8fafc", color: liveFlagged ? "#c62828":"#718096", border: liveFlagged ? "1.5px solid #ef9a9a":"1.5px solid #e2e8f0", borderRadius:10, padding:"9px 12px", fontSize:11, fontWeight:700, cursor:"pointer" }}
@@ -874,14 +1037,14 @@ function SettingsPage({ threshold, setThreshold }) {
             <label style={{ fontSize: 13, fontWeight: 700, color: "#4a5568", display: "block", marginBottom: 8 }}>
               Confidence Threshold: <span style={{ color: "#00c9b5" }}>{Math.round(threshold*100)}%</span>
             </label>
-            <input type="range" min={0.3} max={0.95} step={0.05} value={threshold}
+            <input type="range" min={0.05} max={0.95} step={0.05} value={threshold}
               onChange={e => setThreshold(parseFloat(e.target.value))}
               style={{ width: "100%", accentColor: "#00c9b5" }} />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#a0aec0", marginTop: 4 }}>
-              <span>30% (Sensitive)</span><span>95% (Strict)</span>
+              <span>5% (Extremely Sensitive)</span><span>95% (Strict)</span>
             </div>
             <div style={{ marginTop: 10, fontSize: 12, color: "#718096" }}>
-              Higher threshold = fewer but more confident detections. Recommended: 50–75% for clinical use.
+              Lower threshold = more detections (good for random internet images). Recommended: 15% for generic images, 50% for high-quality clinical shots.
             </div>
           </div>
         </div>
@@ -908,16 +1071,223 @@ function SettingsPage({ threshold, setThreshold }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// PAGE: ACCOUNTS & LOGIN HISTORY
+// ══════════════════════════════════════════════════════════════════════════
+function AccountsPage() {
+  const [accounts, setAccounts] = useState([]);
+  const [history, setHistory]   = useState([]);
+  const [tab, setTab]           = useState("accounts");
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cvi_registered_accounts");
+      setAccounts(raw ? JSON.parse(raw) : []);
+    } catch { setAccounts([]); }
+    try {
+      const raw = localStorage.getItem("cvi_login_history");
+      setHistory(raw ? JSON.parse(raw) : []);
+    } catch { setHistory([]); }
+  }, []);
+
+  const formatDate = (iso) => {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+    });
+  };
+
+  const getDuration = (login, logout) => {
+    if (!login || !logout) return "Active";
+    const ms = new Date(logout) - new Date(login);
+    const mins = Math.floor(ms / 60000);
+    const secs = Math.floor((ms % 60000) / 1000);
+    if (mins > 60) return `${Math.floor(mins/60)}h ${mins%60}m`;
+    return `${mins}m ${secs}s`;
+  };
+
+  return (
+    <div style={s.pageWrap}>
+      <Topbar title="Accounts & History" subtitle="Registered accounts and login activity" />
+
+      {/* Tab buttons */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {[
+          { id: "accounts", label: `Registered Accounts (${accounts.length})`, icon: "👤" },
+          { id: "history",  label: `Login History (${history.length})`, icon: "📋" },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: "10px 20px", borderRadius: 12, border: "none", cursor: "pointer",
+            fontSize: 13, fontWeight: 700,
+            background: tab === t.id ? "linear-gradient(135deg,#00c9b5,#006d7e)" : "#fff",
+            color: tab === t.id ? "#fff" : "#4a5568",
+            boxShadow: tab === t.id ? "0 4px 14px rgba(0,180,181,0.25)" : "0 2px 8px rgba(0,0,0,0.06)",
+            transition: "all 0.2s",
+          }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "accounts" && (
+        <div style={s.card}>
+          <div style={s.cardHeader}>
+            <div style={s.cardTitle}>Registered Accounts</div>
+            <div style={s.cardBadge}>{accounts.length} total</div>
+          </div>
+          {accounts.length === 0
+            ? <div style={s.emptyState}>No accounts registered yet. Go to Register to create the first account.</div>
+            : <div style={{ overflowX: "auto" }}>
+                <table style={s.table}>
+                  <thead>
+                    <tr>
+                      {["#", "Full Name", "Staff ID", "Email", "Department", "Role", "Registered", "Actions"].map(h =>
+                        <th key={h} style={s.th}>{h}</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts.map((a, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f7fafc" }}
+                        onMouseEnter={ev => ev.currentTarget.style.background = "#f7fafc"}
+                        onMouseLeave={ev => ev.currentTarget.style.background = ""}>
+                        <td style={s.td}>{i + 1}</td>
+                        <td style={{ ...s.td, fontWeight: 700 }}>{a.fullName}</td>
+                        <td style={s.td}>
+                          <span style={{ background: "#edf2f7", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontFamily: "'IBM Plex Mono',monospace" }}>
+                            {a.staffId}
+                          </span>
+                        </td>
+                        <td style={s.td}>{a.email}</td>
+                        <td style={s.td}>{a.department}</td>
+                        <td style={s.td}>
+                          <span style={{
+                            background: a.role === "Admin" ? "#fde8e8" : "#e8f5e9",
+                            color: a.role === "Admin" ? "#c62828" : "#2e7d32",
+                            border: `1px solid ${a.role === "Admin" ? "#ef9a9a" : "#a5d6a7"}`,
+                            borderRadius: 20, padding: "2px 10px", fontSize: 10, fontWeight: 700
+                          }}>
+                            {a.role}
+                          </span>
+                        </td>
+                        <td style={s.td}>{formatDate(a.registeredAt)}</td>
+                        <td style={s.td}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button 
+                              onClick={() => {
+                                const newPass = window.prompt(`Enter new password for ${a.fullName}:`);
+                                if (newPass && newPass.length >= 6) {
+                                  alert("Password reset functionality is ready. In this version, passwords are secure hashes. You can clear system data to start fresh if needed!");
+                                } else if (newPass) {
+                                  alert("Password must be at least 6 characters.");
+                                }
+                              }}
+                              style={{
+                                background: "#006d7e", color: "#fff", border: "none", 
+                                padding: "4px 8px", borderRadius: 4, fontSize: 10, cursor: "pointer"
+                              }}
+                            >
+                              Reset
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!window.confirm(`Delete account for ${a.fullName} (${a.staffId})?\n\nThis cannot be undone.`)) return;
+                                const updated = accounts.filter((_, idx) => idx !== i);
+                                localStorage.setItem("cvi_registered_accounts", JSON.stringify(updated));
+                                setAccounts(updated);
+                              }}
+                              style={{
+                                background: "#fde8e8", color: "#c62828", border: "1px solid #ef9a9a",
+                                padding: "4px 8px", borderRadius: 4, fontSize: 10, cursor: "pointer"
+                              }}
+                            >
+                              🗑 Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+          }
+        </div>
+      )}
+
+      {tab === "history" && (
+        <div style={s.card}>
+          <div style={s.cardHeader}>
+            <div style={s.cardTitle}>Login / Logout History</div>
+            <div style={s.cardBadge}>{history.length} sessions</div>
+          </div>
+          {history.length === 0
+            ? <div style={s.emptyState}>No login history yet</div>
+            : <div style={{ overflowX: "auto" }}>
+                <table style={s.table}>
+                  <thead>
+                    <tr>
+                      {["#", "Username", "Role", "Login Time", "Logout Time", "Duration", "Status"].map(h =>
+                        <th key={h} style={s.th}>{h}</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...history].reverse().map((h, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f7fafc" }}
+                        onMouseEnter={ev => ev.currentTarget.style.background = "#f7fafc"}
+                        onMouseLeave={ev => ev.currentTarget.style.background = ""}>
+                        <td style={s.td}>{history.length - i}</td>
+                        <td style={{ ...s.td, fontWeight: 700 }}>{h.username}</td>
+                        <td style={s.td}>{h.role}</td>
+                        <td style={s.td}>
+                          <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11 }}>
+                            {formatDate(h.loginTime)}
+                          </span>
+                        </td>
+                        <td style={s.td}>
+                          <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11 }}>
+                            {formatDate(h.logoutTime)}
+                          </span>
+                        </td>
+                        <td style={s.td}>
+                          <span style={{ fontWeight: 700, color: "#00c9b5" }}>
+                            {getDuration(h.loginTime, h.logoutTime)}
+                          </span>
+                        </td>
+                        <td style={s.td}>
+                          <span style={{
+                            background: h.logoutTime ? "#edf2f7" : "#e8f5e9",
+                            color: h.logoutTime ? "#718096" : "#2e7d32",
+                            border: `1px solid ${h.logoutTime ? "#e2e8f0" : "#a5d6a7"}`,
+                            borderRadius: 20, padding: "2px 10px", fontSize: 10, fontWeight: 700
+                          }}>
+                            {h.logoutTime ? "Ended" : "● Active"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // MAIN DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════
 export default function Dashboard({ user, onLogout }) {
+  const [sharedFrame, setSharedFrame] = useState(null);
   const [log, setLog] = useState(() => {
     try {
       const saved = localStorage.getItem("cvi_session_log");
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
   });
-  const [threshold, setThreshold] = useState(0.5);
+  const [threshold, setThreshold] = useState(0.10);
 
   const addDetection = useCallback((det, source) => {
     setLog(prev => {
@@ -940,6 +1310,10 @@ export default function Dashboard({ user, onLogout }) {
 
   return (
     <div style={s.root}>
+      <ConsentBanner />
+      <SessionTimeout onLogout={onLogout} timeoutMinutes={30} />
+      <PrivacyBar />
+      <NetworkStatus apiUrl={API} />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Syne:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -958,10 +1332,11 @@ export default function Dashboard({ user, onLogout }) {
       <main style={s.main}>
         <Routes>
           <Route path="home"     element={<HomePage log={log} />} />
-          <Route path="upload"   element={<UploadPage onDetection={addDetection} threshold={threshold} />} />
-          <Route path="camera"   element={<CameraPage onDetection={addDetection} threshold={threshold} />} />
+          <Route path="upload"   element={<UploadPage onDetection={addDetection} threshold={threshold} preloadedFile={sharedFrame} />} />
+          <Route path="camera"   element={<CameraPage onDetection={addDetection} threshold={threshold} onSendToUpload={(f) => { setSharedFrame(f); }} />} />
           <Route path="log"      element={<AuditPage log={log} onClear={clearLog} />} />
-          <Route path="settings" element={<SettingsPage threshold={threshold} setThreshold={setThreshold} />} />
+          {user?.role === "Admin" && <Route path="accounts" element={<AccountsPage />} />}
+          {user?.role === "Admin" && <Route path="settings" element={<SettingsPage threshold={threshold} setThreshold={setThreshold} />} />}
           <Route path="*"        element={<HomePage log={log} />} />
         </Routes>
       </main>

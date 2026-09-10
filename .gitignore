@@ -1,11 +1,28 @@
 # Ignore the environments
+scratch_*
 venv/
 gpu_env/
+node_modules/
 
 # Ignore Python cache
 __pycache__/
+*.pyc
+
+# Ignore environment variables
+.env
+.env.local
+
+# Ignore IDE files
+.vscode/
+.idea/
 
 # Ignore heavy AI weights and video files
-*.pt
+# *.pt  <-- Note: Keep this commented if you want to upload weights, or use Git LFS
 *.mp4
 *.avi
+runs/
+!backend/runs/detect/Needle_Generalization_FineTune/weights/best.pt
+!backend/runs/detect/Needle_Precision_Stable_Final/weights/best.pt
+
+# Ignore only this 303MB zip archive
+Misc ,Additional files/Blood extraction_v2i_yolov8.zip

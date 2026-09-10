@@ -1,6 +1,8 @@
 // This file is not neccessary
 import { useState, useEffect, useRef } from "react";
 
+
+
 export default function ClinicalDashboard() {
   const [alignmentAccuracy, setAlignmentAccuracy] = useState(94.7);
   const [tipDepth, setTipDepth] = useState(8.4);

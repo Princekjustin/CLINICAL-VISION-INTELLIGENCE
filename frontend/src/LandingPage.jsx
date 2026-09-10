@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+const SESSION_KEY = "cvi_user_session";
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const [tick, setTick]     = useState(new Date());
   const [visible, setVisible] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
+  const [showUC, setShowUC] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setTick(new Date()), 1000);
@@ -13,7 +16,7 @@ export default function LandingPage() {
     return () => clearInterval(id);
   }, []);
 
-  return (
+  return (  
     <div style={S.root}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Nunito:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -96,25 +99,25 @@ export default function LandingPage() {
       <div style={S.scanline} />
 
       {/* Floating medical icons */}
-      <div style={{ ...S.floatIcon, top: "14%", left: "5%", animation: "float 5s ease-in-out infinite" }}>
+      <div style={{ ...S.floatIcon, top: "14%", left: "5%", animation: "float 5s ease-in-out infinite" }} onClick={() => setShowUC(true)} title="Coming Soon">
         <svg width={44} height={44} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={1.5} strokeLinecap="round">
           <path d="M3 3c0 0 3 2 3 5s-3 5-3 5M21 3c0 0-3 2-3 5s3 5 3 5M3 13c0 0 3 2 3 5s-3 5-3 5M21 13c0 0-3 2-3 5s3 5 3 5"/>
           <line x1="6" y1="5" x2="18" y2="5"/><line x1="6" y1="8" x2="18" y2="8"/>
           <line x1="6" y1="15" x2="18" y2="15"/><line x1="6" y1="18" x2="18" y2="18"/>
         </svg>
       </div>
-      <div style={{ ...S.floatIcon, top: "20%", right: "4%", animation: "float2 4s ease-in-out infinite 0.8s" }}>
+      <div style={{ ...S.floatIcon, top: "20%", right: "4%", animation: "float2 4s ease-in-out infinite 0.8s" }} onClick={() => setShowUC(true)} title="Coming Soon">
         <svg width={44} height={44} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={1.5} strokeLinecap="round">
           <path d="M18 2l4 4-14 14H4v-4L18 2z"/><line x1="9" y1="11" x2="13" y2="7"/>
           <line x1="11" y1="13" x2="15" y2="9"/><line x1="2" y1="22" x2="6" y2="18"/>
         </svg>
       </div>
-      <div style={{ ...S.floatIcon, bottom: "28%", left: "4%", animation: "float 6s ease-in-out infinite 1.2s" }}>
+      <div style={{ ...S.floatIcon, bottom: "28%", left: "4%", animation: "float 6s ease-in-out infinite 1.2s" }} onClick={() => setShowUC(true)} title="Coming Soon">
         <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={1.5} strokeLinecap="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
       </div>
-      <div style={{ ...S.floatIcon, bottom: "24%", right: "5%", animation: "float2 5s ease-in-out infinite 0.4s" }}>
+      <div style={{ ...S.floatIcon, bottom: "24%", right: "5%", animation: "float2 5s ease-in-out infinite 0.4s" }} onClick={() => setShowUC(true)} title="Coming Soon">
         <svg width={38} height={38} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={1.5} strokeLinecap="round">
           <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
         </svg>
@@ -142,17 +145,17 @@ export default function LandingPage() {
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
-          <span className="nav-link" onClick={() => window.scrollTo({top:0,behavior:"smooth"})}>Overview</span>
+          <span className="nav-link" onClick={() => document.getElementById("overview-section")?.scrollIntoView({behavior:"smooth"})}>Overview</span>
           <span className="nav-link" onClick={() => document.getElementById("features-section")?.scrollIntoView({behavior:"smooth"})}>Features</span>
-          <span className="nav-link" onClick={() => document.getElementById("cta-section")?.scrollIntoView({behavior:"smooth"})}>Technology</span>
-          <button className="outline-btn" style={{ padding: "8px 22px", fontSize: 13 }} onClick={() => navigate("/login")}>
+          <span className="nav-link" onClick={() => document.getElementById("tech-section")?.scrollIntoView({behavior:"smooth"})}>Technology</span>
+          <button className="outline-btn" style={{ padding: "8px 22px", fontSize: 13 }} onClick={() => navigate("/login?force=1")}>
             Sign In
           </button>
         </div>
       </nav>
 
       {/* ── HERO ── */}
-      <section style={{
+      <section id="overview-section" style={{
         ...S.hero,
         opacity: visible ? 1 : 0,
         transform: visible ? "none" : "translateY(20px)",
@@ -182,9 +185,10 @@ export default function LandingPage() {
           <button className="cta-btn" onClick={() => navigate("/login")}>
             Access System →
           </button>
-          <button className="outline-btn" onClick={() => navigate("/register")}>
+          <button className="outline-btn" onClick={() => navigate("/register?force=1")}>
             Create Account
           </button>
+
           <button className="outline-btn" onClick={() => setShowDocs(true)}
             style={{ padding:"14px 28px", fontSize:14, borderColor:"rgba(255,255,255,0.3)" }}>
             📋 View Documentation
@@ -307,17 +311,45 @@ export default function LandingPage() {
 
         <div style={S.featureGrid}>
           {[
-            { icon:"🧠", title:"YOLOv11 Detection",      body:"Detects needle insertion angle in real time across 18 discrete classes from 15° to 30°, plus critical out-of-range alerts.", color:"#00c9b5" },
+            { icon:"🧠", title:"YOLOv11 Detection",      body:"Detects needle insertion angle in real time across 18 discrete classes from 15° to 30°, plus critical out-of-range alerts.", color:"#dd00ba" },
             { icon:"🔬", title:"MONAI Preprocessing",     body:"Clinical-grade image normalisation using ScaleIntensity and NormalizeIntensity — ensures consistent results under any hospital lighting.", color:"#7c3aed" },
             { icon:"🚨", title:"3-Tier Alert System",     body:"Critical (above 30°), Warning (below 15°), Normal — intelligent alerts with configurable confidence threshold to prevent alarm fatigue.", color:"#e53935" },
             { icon:"📋", title:"Session Audit Log",       body:"Every detection logged with timestamp, angle class, confidence score and alert level. Export as CSV for clinical documentation.", color:"#f59e0b" },
-            { icon:"📷", title:"Live Camera Monitoring",  body:"WebRTC webcam feed with frame capture every 800ms. Real-time bounding box overlay shows exactly what the AI is detecting.", color:"#00c9b5" },
+            { icon:"📷", title:"Live Camera Monitoring",  body:"WebRTC webcam feed with frame capture every 800ms. Real-time bounding box overlay shows exactly what the AI is detecting.", color:"#36454F" },
             { icon:"🔒", title:"Human-in-the-Loop",       body:"The AI informs — the clinician decides. Confidence scores are always shown. No automated clinical action is ever taken without human review.", color:"#1e8449" },
           ].map(({ icon, title, body, color }) => (
             <div key={title} className="feat-card" style={{ ...S.featCard, borderTop: `3px solid ${color}` }}>
               <div style={{ fontSize: 28, marginBottom: 12 }}>{icon}</div>
               <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 15, fontWeight: 700, color, marginBottom: 8 }}>{title}</div>
               <div style={{ fontFamily: "'Nunito',sans-serif", fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 1.7 }}>{body}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── TECHNOLOGY SECTION ── */}
+      <section id="tech-section" style={{ maxWidth:1100, margin:"60px auto 0", padding:"0 32px", position:"relative", zIndex:5 }}>
+        <div style={{ textAlign:"center", marginBottom:36 }}>
+          <div style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:"rgba(255,255,255,0.5)", letterSpacing:"0.2em", marginBottom:10 }}>TECH STACK</div>
+          <h2 style={{ fontFamily:"'Syne',sans-serif", fontSize:32, fontWeight:800, color:"#fff" }}>Built on Clinical-Grade Technology</h2>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:14 }}>
+          {[
+            { name:"YOLOv11",    role:"Object Detection",      detail:"18-class needle angle classification at 800ms intervals", color:"#00c9b5" },
+            { name:"MONAI",      role:"Medical Preprocessing",  detail:"ScaleIntensity + NormalizeIntensity for clinical imaging", color:"#7c3aed" },
+            { name:"FastAPI",    role:"Backend API",            detail:"REST endpoints: /detect /log /health /categories", color:"#f59e0b" },
+            { name:"React",      role:"Frontend Dashboard",     detail:"Clinical UI with real-time detection overlay and audit log", color:"#2563eb" },
+            { name:"Roboflow",   role:"Dataset Platform",       detail:"16,368 images — 82/12/6 train/val/test split", color:"#e53935" },
+            { name:"RTX 5070",   role:"Inference Hardware",     detail:"CUDA-accelerated GPU — 461ms latency per frame", color:"#1e8449" },
+          ].map(({ name, role, detail, color }) => (
+            <div key={name} style={{
+              background:"rgba(255,255,255,0.08)", backdropFilter:"blur(14px)",
+              border:`1px solid ${color}40`, borderRadius:14, padding:"18px 16px",
+              borderTop:`3px solid ${color}`,
+            }}>
+              <div style={{ fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:800, color, marginBottom:4 }}>{name}</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, fontWeight:700, color:"rgba(255,255,255,0.7)", marginBottom:8 }}>{role}</div>
+              <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:11, color:"rgba(255,255,255,0.45)", lineHeight:1.6 }}>{detail}</div>
             </div>
           ))}
         </div>
@@ -336,12 +368,74 @@ export default function LandingPage() {
             Create your clinical account and start monitoring injection angles in real time.
           </p>
           <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
-            <button className="cta-btn" onClick={() => navigate("/register")}>Create Account →</button>
-            <button className="outline-btn" onClick={() => navigate("/login")}>Sign In</button>
+            <button className="cta-btn" onClick={() => navigate("/register?force=1")}>Create Account →</button>
+            <button className="outline-btn" onClick={() => navigate("/login?force=1")}>Sign In</button>
             <button className="outline-btn" onClick={() => setShowDocs(true)} style={{ borderColor:"rgba(255,255,255,0.3)", fontSize:14 }}>📋 Docs</button>
           </div>
         </div>
       </section>
+
+      {/* ── UNDER CONSTRUCTION MODAL ── */}
+      {showUC && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.65)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(6px)" }}
+          onClick={() => setShowUC(false)}>
+          <div style={{
+            background:"rgba(10,22,40,0.92)",
+            backdropFilter:"blur(28px)", WebkitBackdropFilter:"blur(28px)",
+            border:"1.5px solid rgba(0,201,181,0.35)",
+            borderRadius:24, padding:"44px 48px", maxWidth:480, width:"90%",
+            textAlign:"center", position:"relative",
+            boxShadow:"0 24px 64px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)"
+          }} onClick={e => e.stopPropagation()}>
+            <button onClick={() => setShowUC(false)} style={{ position:"absolute", top:16, right:20, background:"none", border:"none", color:"rgba(255,255,255,0.4)", fontSize:22, cursor:"pointer" }}>×</button>
+
+            {/* Icon */}
+            <div style={{ fontSize:44, marginBottom:16 }}>🔬</div>
+
+            {/* Badge */}
+            <div style={{ display:"inline-flex", alignItems:"center", gap:7, background:"rgba(0,201,181,0.12)", border:"1px solid rgba(0,201,181,0.3)", borderRadius:99, padding:"4px 14px", marginBottom:18 }}>
+              <span style={{ width:7, height:7, borderRadius:"50%", background:"#f59e0b", animation:"pulse 1.5s ease infinite", display:"inline-block" }}/>
+              <span style={{ fontFamily:"'IBM Plex Mono',monospace", fontSize:10, color:"#f59e0b", letterSpacing:"0.12em" }}>MODULE v2.0 — IN DEVELOPMENT</span>
+            </div>
+
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:800, color:"#fff", marginBottom:12 }}>
+              Statistical Deep-Dive
+            </div>
+            <div style={{ fontFamily:"'Nunito',sans-serif", fontSize:13, color:"rgba(255,255,255,0.6)", lineHeight:1.8, marginBottom:28 }}>
+              Module v2.0: Statistical deep-dive coming in the next clinical update.<br/>
+              This will include population-level injection analytics, angle distribution heatmaps, clinician performance trends, and exportable clinical reports for regulatory compliance.
+            </div>
+
+            {/* SDLC phase indicator */}
+            <div style={{ display:"flex", justifyContent:"center", gap:8, marginBottom:28, flexWrap:"wrap" }}>
+              {[
+                { phase:"Requirement Analysis", done:true },
+                { phase:"System Design",        done:true },
+                { phase:"Implementation",       done:true },
+                { phase:"Analytics Module",     done:false },
+                { phase:"Clinical Validation",  done:false },
+              ].map(({ phase, done }) => (
+                <div key={phase} style={{
+                  background: done ? "rgba(0,201,181,0.15)" : "rgba(255,255,255,0.05)",
+                  border: `1px solid ${done ? "rgba(0,201,181,0.4)" : "rgba(255,255,255,0.12)"}`,
+                  borderRadius:99, padding:"3px 10px",
+                  fontFamily:"'IBM Plex Mono',monospace", fontSize:9,
+                  color: done ? "#00c9b5" : "rgba(255,255,255,0.35)",
+                  display:"flex", alignItems:"center", gap:5,
+                }}>
+                  {done ? "✓" : "○"} {phase}
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => setShowUC(false)} style={{
+              background:"linear-gradient(135deg,#00c9b5,#006d7e)", color:"#fff",
+              border:"none", borderRadius:12, padding:"11px 32px",
+              fontFamily:"'Syne',sans-serif", fontSize:14, fontWeight:700, cursor:"pointer"
+            }}>Got it</button>
+          </div>
+        </div>
+      )}
 
       {/* ── DOCUMENTATION MODAL ── */}
       {showDocs && (
@@ -399,7 +493,7 @@ const S = {
   blob2: { position:"absolute", bottom:"-15%", right:"-6%", width:580, height:580, borderRadius:"50%", background:"rgba(255,255,255,0.05)", pointerEvents:"none" },
   blob3: { position:"absolute", top:"40%", left:"30%", width:240, height:240, borderRadius:"50%", background:"rgba(255,255,255,0.04)", pointerEvents:"none" },
   blob4: { position:"absolute", top:"20%", right:"20%", width:160, height:160, borderRadius:"50%", background:"rgba(0,229,208,0.08)", pointerEvents:"none" },
-  floatIcon: { position:"absolute", zIndex:1, pointerEvents:"none" },
+  floatIcon: { position:"absolute", zIndex:3, cursor:"pointer" },
   scanline: {
     position:"fixed", left:0, right:0, height:3,
     background:"rgba(0,229,208,0.06)", filter:"blur(1px)",
